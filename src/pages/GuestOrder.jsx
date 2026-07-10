@@ -34,6 +34,7 @@ export default function GuestOrder() {
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState(null);
   const [copied, setCopied] = useState(false);
+  const [redirecting, setRedirecting] = useState(false);
 
   const [refLookup, setRefLookup] = useState('');
   const [statusBusy, setStatusBusy] = useState(false);
@@ -52,8 +53,21 @@ export default function GuestOrder() {
     setResult(null);
     try {
       const data = await api.orders.initiateGuestOrder({ network, capacityGb: Number(capacityGb), phoneNumber });
+
+      // The backend returns Paystack's hosted checkout URL. Without sending
+      // the guest there, they have no way to actually pay — the order sits
+      // PENDING forever. Send them straight to Paystack; fall back to
+      // showing the reference/manual "Pay now" button only if the backend
+      // response is ever missing the URL (e.g. mid-deploy skew).
+      if (data.authorizationUrl) {
+        setResult(data);
+        setRedirecting(true);
+        window.location.href = data.authorizationUrl;
+        return;
+      }
+
       setResult(data);
-      notify.success('Order initiated — complete payment to finish.');
+      notify.error('Order started, but no payment link was returned. Use "Pay now" below, or contact support.');
     } catch (err) {
       notify.error(apiErrorMessage(err, 'Could not start this order.'));
     } finally {
@@ -84,6 +98,12 @@ export default function GuestOrder() {
       setTimeout(() => setCopied(false), 1800);
     } catch {
       notify.error('Could not copy — please copy it manually.');
+    }
+  };
+
+  const handlePayNow = () => {
+    if (result?.authorizationUrl) {
+      window.location.href = result.authorizationUrl;
     }
   };
 
@@ -272,7 +292,7 @@ export default function GuestOrder() {
 
                 <button className="btn btn--primary btn--block" type="submit" disabled={busy || !pricingReady}>
                   <Icon name="arrow_forward" size={18} />
-                  {busy ? 'Starting order…' : 'Continue to payment'}
+                  {busy ? (redirecting ? 'Redirecting to Paystack…' : 'Starting order…') : 'Continue to payment'}
                 </button>
               </form>
             )}
@@ -298,16 +318,38 @@ export default function GuestOrder() {
                   </button>
                 </div>
 
-                <p className="muted" style={{ marginTop: 10 }}>
-                  Complete your payment on Paystack using this reference, then come back and check the status
-                  below. A receipt was also sent to <strong>{result.email}</strong>.
-                </p>
-
-                <div className="result-actions">
-                  <button className="btn btn--ghost" onClick={() => setResult(null)}>
-                    Start another order
-                  </button>
-                </div>
+                {result.authorizationUrl ? (
+                  <>
+                    <p className="muted" style={{ marginTop: 10 }}>
+                      {redirecting
+                        ? "Taking you to Paystack to complete payment…"
+                        : 'Click below to pay with Paystack. A receipt was also sent to '}
+                      {!redirecting && <strong>{result.email}</strong>}
+                      {!redirecting && '.'}
+                    </p>
+                    <div className="result-actions">
+                      <button className="btn btn--primary" onClick={handlePayNow}>
+                        <Icon name="lock" size={16} />
+                        Pay with Paystack
+                      </button>
+                      <button className="btn btn--ghost" onClick={() => setResult(null)}>
+                        Start another order
+                      </button>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <p className="muted" style={{ marginTop: 10 }}>
+                      We couldn't get a payment link this time. Please start again — if this keeps happening,
+                      contact support with the reference above.
+                    </p>
+                    <div className="result-actions">
+                      <button className="btn btn--ghost" onClick={() => setResult(null)}>
+                        Start another order
+                      </button>
+                    </div>
+                  </>
+                )}
               </div>
             )}
 
