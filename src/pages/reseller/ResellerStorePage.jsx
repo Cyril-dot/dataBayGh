@@ -9,6 +9,7 @@ import ShareFlyout from '../../components/ShareFlyout';
 
 const HEX_RE = /^#[0-9A-Fa-f]{6}$/;
 const IMGBB_KEY = import.meta.env.VITE_IMGBB_API_KEY ?? 'bdd12743a2e929bcdd4a6843dea9295e';
+const STORE_BASE_URL = 'https://www.databaygh.shop';
 
 const PRESETS = [
   { hex: '#2C7BE5', label: 'Ocean' },
@@ -355,11 +356,9 @@ export default function ResellerStorePage() {
   const isRounded   = form.buttonStyle === 'ROUNDED';
   const displayName = form.storeName || settings?.storeName || 'Your Store';
 
-  const storeUrl =
-    shareInfo?.storeUrl ??
-    (settings?.storeSlug
-      ? `${window.location.origin}/store/${settings.storeSlug}`
-      : null);
+  const storeUrl = settings?.storeSlug
+    ? `${STORE_BASE_URL}/store/${settings.storeSlug}`
+    : null;
 
   const pv = {
     bg:      isDark ? '#18181b' : '#ffffff',
