@@ -4,6 +4,8 @@ import { useNotify } from '../../context/NotificationContext';
 import Spinner from '../../components/Spinner';
 import EmptyState from '../../components/EmptyState';
 import NetworkBadge from '../../components/NetworkBadge';
+import StatusBadge from '../../components/StatusBadge';
+import Pagination from '../../components/Pagination';
 import Icon from '../../components/Icon';
 
 const fmtGhc = (n) => `GH₵ ${Number(n ?? 0).toFixed(2)}`;
@@ -28,6 +30,16 @@ export default function AffiliateDashboard() {
   const [commTotal,    setCommTotal]    = useState(0);
   const [commLoading,  setCommLoading]  = useState(false);
 
+  // ── Payout request + history ────────────────────────────────────
+  // NOTE: payouts draw ONLY from availableEarningsGhc (commission earned),
+  // never from the user's wallet balance — these are separate balances.
+  const [payoutForm, setPayoutForm] = useState({ amount: '', mobileMoneyNumber: '', network: 'MTN' });
+  const [payoutBusy, setPayoutBusy] = useState(false);
+  const [payouts, setPayouts] = useState(null);
+  const [payoutPage, setPayoutPage] = useState(0);
+  const [payoutTotalPages, setPayoutTotalPages] = useState(0);
+  const [payoutLoading, setPayoutLoading] = useState(false);
+
   // ── Copy state ─────────────────────────────────────────────────
   const [copied, setCopied] = useState(false);
 
@@ -50,6 +62,7 @@ export default function AffiliateDashboard() {
           active:        true,
         });
         loadCommissions(0);
+        loadPayouts(0);
       })
       .catch(() => {
         // Not yet active — that's fine, show the activate prompt
@@ -70,6 +83,19 @@ export default function AffiliateDashboard() {
       })
       .catch(() => setCommissions([]))
       .finally(() => setCommLoading(false));
+  };
+
+  const loadPayouts = (p = 0) => {
+    setPayoutLoading(true);
+    api.affiliate
+      .getPayoutHistory(p, 10)
+      .then((data) => {
+        setPayouts(data.content);
+        setPayoutTotalPages(data.totalPages);
+        setPayoutPage(data.number);
+      })
+      .catch(() => setPayouts([]))
+      .finally(() => setPayoutLoading(false));
   };
 
   // ── Activate ───────────────────────────────────────────────────
@@ -96,6 +122,7 @@ export default function AffiliateDashboard() {
       setActivateData((prev) => ({ ...prev, active: false }));
       setDashboard(null);
       setCommissions(null);
+      setPayouts(null);
       notify.success('Affiliate programme deactivated.');
     } catch (err) {
       notify.error(apiErrorMessage(err, 'Could not deactivate.'));
@@ -111,6 +138,26 @@ export default function AffiliateDashboard() {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     });
+  };
+
+  // ── Payout request ───────────────────────────────────────────────
+  const updatePayoutForm = (key) => (e) =>
+    setPayoutForm((f) => ({ ...f, [key]: e.target.value }));
+
+  const handlePayoutSubmit = async (e) => {
+    e.preventDefault();
+    setPayoutBusy(true);
+    try {
+      await api.affiliate.requestPayout({ ...payoutForm, amount: Number(payoutForm.amount) });
+      notify.success('Payout requested — pending admin review.');
+      setPayoutForm({ amount: '', mobileMoneyNumber: '', network: payoutForm.network });
+      loadPayouts(0);
+      loadDashboard(); // refresh availableEarningsGhc, now reduced by the reserved amount
+    } catch (err) {
+      notify.error(apiErrorMessage(err, 'Could not request a payout. Check your available earnings.'));
+    } finally {
+      setPayoutBusy(false);
+    }
   };
 
   const isActive = activateData?.active === true;
@@ -240,6 +287,30 @@ export default function AffiliateDashboard() {
           line-height: 1.55; padding: 10px 12px;
           background: var(--surface-raised); border: 1px solid var(--border); border-radius: 9px;
         }
+
+        /* Payout form + history */
+        .af-payout-balance-chip {
+          display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap;
+          background: var(--green-soft); border: 1px solid rgba(16,185,129,0.3);
+          color: #34D399; padding: 7px 14px; border-radius: 999px;
+          font-size: 0.8rem; font-weight: 700; margin: 10px 0 16px;
+        }
+        .af-payout-balance-chip button {
+          background: none; border: none; color: inherit; font-weight: 800;
+          text-decoration: underline; cursor: pointer; padding: 0; font-size: inherit;
+        }
+        .af-po-table-view { display: block; }
+        .af-po-list-view { display: none; flex-direction: column; gap: 10px; margin-top: 4px; }
+        .af-po-row { border: 1px solid var(--border); border-radius: var(--radius); padding: 12px 14px; background: var(--surface-raised); }
+        .af-po-row__top { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+        .af-po-row__amount { font-family: var(--font-mono); font-weight: 700; font-size: 0.98rem; }
+        .af-po-row__meta { display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; font-size: 0.82rem; color: var(--text-dim); margin-top: 8px; }
+        .af-po-row__note { font-size: 0.8rem; color: var(--text-faint); margin-top: 6px; font-style: italic; }
+        .af-po-row__date { font-size: 0.74rem; color: var(--text-faint); margin-top: 8px; }
+        @media (max-width: 700px) {
+          .af-po-table-view { display: none; }
+          .af-po-list-view { display: flex; }
+        }
       `}</style>
 
       {/* ── Header ── */}
@@ -262,7 +333,8 @@ export default function AffiliateDashboard() {
             <h2>Earn while you share</h2>
             <p>
               Share your unique referral link. Every time someone you refer places an order,
-              you earn <strong>2% commission</strong> — credited instantly to your wallet.
+              you earn <strong>2% commission</strong> — tracked in your own earnings balance,
+              separate from your wallet, and paid out to mobile money on request.
             </p>
             <button
               className="btn btn--primary"
@@ -282,7 +354,7 @@ export default function AffiliateDashboard() {
               {[
                 { icon: 'share',         title: 'Share your link',    text: 'Send your unique referral URL to friends, family, or your audience.' },
                 { icon: 'person_add',    title: 'They sign up',       text: 'Anyone who registers through your link is tagged to your account.' },
-                { icon: 'trending_up',   title: 'Earn 2% commission', text: 'Every order they place earns you 2%, credited to your wallet instantly.' },
+                { icon: 'trending_up',   title: 'Earn 2% commission', text: 'Every order they place earns you 2%, added to your earnings balance — cash it out anytime.' },
               ].map((s) => (
                 <div className="af-step" key={s.title}>
                   <div className="af-step__icon"><Icon name={s.icon} size={18} /></div>
@@ -424,6 +496,110 @@ export default function AffiliateDashboard() {
                   </div>
                 )}
               </div>
+
+              {/* Payout request + history */}
+              <div className="card fade-in-up delay-2">
+                <h2>Request a payout</h2>
+                <p className="muted" style={{ fontSize: '.85rem', marginBottom: 4 }}>
+                  Cash out your earned commission to mobile money. This never touches your wallet balance.
+                </p>
+                <div className="af-payout-balance-chip">
+                  <Icon name="savings" size={14} />
+                  Available: {fmtGhc(dashboard.availableEarningsGhc)}
+                  <button
+                    type="button"
+                    onClick={() => setPayoutForm((f) => ({ ...f, amount: String(dashboard.availableEarningsGhc) }))}
+                  >
+                    Use max
+                  </button>
+                </div>
+                <form onSubmit={handlePayoutSubmit} className="form">
+                  <label className="form__field">
+                    <span>Amount (GH₵)</span>
+                    <input
+                      type="number" min="0.01" step="0.01" required
+                      value={payoutForm.amount} onChange={updatePayoutForm('amount')}
+                    />
+                  </label>
+                  <label className="form__field">
+                    <span>Mobile money number</span>
+                    <input
+                      required value={payoutForm.mobileMoneyNumber}
+                      onChange={updatePayoutForm('mobileMoneyNumber')} placeholder="0241234567"
+                    />
+                  </label>
+                  <label className="form__field">
+                    <span>Network</span>
+                    <select value={payoutForm.network} onChange={updatePayoutForm('network')}>
+                      <option value="MTN">MTN</option>
+                      <option value="TELECEL">Telecel</option>
+                      <option value="AIRTELTIGO">AirtelTigo</option>
+                    </select>
+                  </label>
+                  <button className="btn btn--primary btn--block" type="submit" disabled={payoutBusy}>
+                    <Icon name="send" size={16} />
+                    {payoutBusy ? 'Requesting…' : 'Request payout'}
+                  </button>
+                </form>
+
+                <div style={{ marginTop: 20, paddingTop: 16, borderTop: '1px solid var(--border)' }}>
+                  <h2 style={{ fontSize: '1rem', marginBottom: 8 }}>Payout history</h2>
+
+                  {payoutLoading && <Spinner label="Loading payouts…" />}
+                  {!payoutLoading && (!payouts || payouts.length === 0) && (
+                    <EmptyState title="No payouts yet" hint="Your payout requests will be listed here." />
+                  )}
+                  {!payoutLoading && payouts && payouts.length > 0 && (
+                    <>
+                      <div className="table-wrap af-po-table-view">
+                        <table className="table">
+                          <thead>
+                            <tr>
+                              <th>Amount</th>
+                              <th>Mobile money</th>
+                              <th>Network</th>
+                              <th>Status</th>
+                              <th>Admin note</th>
+                              <th>Requested</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {payouts.map((p) => (
+                              <tr key={p.id}>
+                                <td className="mono">{fmtGhc(p.amount)}</td>
+                                <td className="mono">{p.mobileMoneyNumber}</td>
+                                <td>{p.network}</td>
+                                <td><StatusBadge status={p.status} /></td>
+                                <td className="muted">{p.adminNote || '—'}</td>
+                                <td className="muted">{new Date(p.createdAt).toLocaleDateString()}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+
+                      <div className="af-po-list-view">
+                        {payouts.map((p) => (
+                          <div className="af-po-row" key={p.id}>
+                            <div className="af-po-row__top">
+                              <span className="af-po-row__amount">{fmtGhc(p.amount)}</span>
+                              <StatusBadge status={p.status} />
+                            </div>
+                            <div className="af-po-row__meta">
+                              <span>{p.network}</span>
+                              <span className="mono">{p.mobileMoneyNumber}</span>
+                            </div>
+                            {p.adminNote && <div className="af-po-row__note">"{p.adminNote}"</div>}
+                            <div className="af-po-row__date">{new Date(p.createdAt).toLocaleDateString()}</div>
+                          </div>
+                        ))}
+                      </div>
+
+                      <Pagination page={payoutPage} totalPages={payoutTotalPages} onChange={loadPayouts} />
+                    </>
+                  )}
+                </div>
+              </div>
             </div>
 
             {/* ── Aside ── */}
@@ -449,22 +625,23 @@ export default function AffiliateDashboard() {
                 </div>
               </div>
 
-              {/* Wallet balance */}
+              {/* Available earnings — separate balance from wallet */}
               <div className="card">
-                <h2 style={{ marginBottom: 4, fontSize: '.95rem' }}>Wallet balance</h2>
+                <h2 style={{ marginBottom: 4, fontSize: '.95rem' }}>Available earnings</h2>
                 <p className="muted" style={{ fontSize: '.78rem', marginBottom: 8 }}>
-                  Commissions land here instantly.
+                  This is your affiliate commission balance — separate from your wallet.
+                  Request a payout below to cash it out.
                 </p>
                 <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 700, fontSize: '1.4rem' }}>
-                  {fmtGhc(dashboard.walletBalanceGhc)}
+                  {fmtGhc(dashboard.availableEarningsGhc)}
                 </span>
               </div>
 
               {/* Tips */}
               <div className="af-tip">
                 <Icon name="lightbulb" size={15} style={{ color: 'var(--accent-bright)', flexShrink: 0, marginTop: 1 }} />
-                Commissions are credited instantly when a referred user's order is confirmed.
-                If the order is refunded, the commission is reversed.
+                Commissions are added to your earnings balance instantly when a referred user's
+                order is confirmed. If the order is refunded, the commission is reversed.
               </div>
 
               <div className="af-tip">
