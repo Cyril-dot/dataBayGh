@@ -449,7 +449,7 @@ export default function ResellerStorePage() {
               style={{ background: HEX_RE.test(form.themeColour) ? form.themeColour : 'var(--border)' }}
               aria-hidden="true"
             />
-            <div style={{ flex: 1 }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
               <label htmlFor="themeColour" className="rs-field-label" style={{ marginBottom: 4 }}>
                 Custom hex
               </label>
@@ -463,7 +463,7 @@ export default function ResellerStorePage() {
                 autoComplete="off"
                 spellCheck={false}
                 aria-describedby={colourErr ? 'colour-err' : undefined}
-                style={{ fontFamily: 'var(--font-mono)', fontSize: '.85rem' }}
+                style={{ fontFamily: 'var(--font-mono)', fontSize: '.85rem', width: '100%' }}
               />
               {colourErr && (
                 <p id="colour-err" className="rs-field-error" role="alert">{colourErr}</p>
@@ -602,17 +602,36 @@ export default function ResellerStorePage() {
         .rs-shell {
           display: grid;
           grid-template-columns: 176px 1fr 340px;
-          grid-template-rows: auto;
+          grid-template-areas: "nav form preview";
           gap: 16px;
           align-items: start;
         }
+        .rs-nav        { grid-area: nav; }
+        .rs-form-col   { grid-area: form; min-width: 0; }
+        .rs-preview-col{ grid-area: preview; min-width: 0; }
+
         @media (max-width: 1080px) {
-          .rs-shell { grid-template-columns: 1fr 320px; }
-          .rs-nav { display: flex; flex-direction: row; gap: 4px; overflow-x: auto; }
+          .rs-shell {
+            grid-template-columns: 1fr 300px;
+            grid-template-areas: "nav nav" "form preview";
+          }
+          .rs-nav {
+            display: flex; flex-direction: row; gap: 4px;
+            overflow-x: auto; -webkit-overflow-scrolling: touch;
+          }
+          .rs-nav-btn { width: auto; flex-shrink: 0; }
         }
-        @media (max-width: 720px) {
-          .rs-shell { grid-template-columns: 1fr; }
-          .rs-preview-col { display: none; }
+        @media (max-width: 760px) {
+          .rs-shell {
+            grid-template-columns: 1fr;
+            grid-template-areas: "nav" "form" "preview";
+            gap: 20px;
+          }
+          .rs-preview-col { position: static; max-width: 420px; margin: 0 auto; width: 100%; }
+        }
+        @media (max-width: 480px) {
+          .rs-header { flex-direction: column; gap: 8px; }
+          .rs-form-col .card { padding: 16px; min-height: 0; }
         }
 
         /* ── Section nav — receipt-tab styling, same tokens as before ── */
@@ -632,6 +651,7 @@ export default function ResellerStorePage() {
           transition: background 150ms, color 150ms;
           -webkit-tap-highlight-color: transparent;
           width: 100%; position: relative;
+          min-height: 40px;
         }
         .rs-nav-btn__tag {
           font-family: var(--font-mono); font-size: .62rem; font-weight: 700;
@@ -658,11 +678,12 @@ export default function ResellerStorePage() {
         .rs-legend { font-size: 1rem; font-weight: 700; margin-bottom: 4px; padding: 0; }
 
         /* ── Field atoms ─────────────────────────────── */
-        .rs-field { display: flex; flex-direction: column; gap: 6px; }
+        .rs-field { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+        .rs-field input, .rs-field textarea { width: 100%; box-sizing: border-box; }
         .rs-field-label {
           font-size: .74rem; font-weight: 700; text-transform: uppercase;
           letter-spacing: .07em; color: var(--text-dim);
-          display: flex; align-items: baseline; gap: 8px;
+          display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap;
         }
         .rs-field-hint {
           font-size: .72rem; font-weight: 400; text-transform: none;
@@ -672,6 +693,7 @@ export default function ResellerStorePage() {
           display: flex; align-items: center; gap: 5px;
           font-size: .73rem; color: var(--text-faint);
           font-family: var(--font-mono); margin-top: 2px;
+          flex-wrap: wrap; word-break: break-all;
         }
         .rs-field-error {
           font-size: .74rem; color: var(--danger);
@@ -690,6 +712,7 @@ export default function ResellerStorePage() {
           border: 2px solid transparent;
           transition: transform 150ms, border-color 150ms;
           touch-action: manipulation; -webkit-tap-highlight-color: transparent;
+          flex-shrink: 0;
         }
         .rs-swatch:hover { transform: scale(1.18); }
         .rs-swatch:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
@@ -699,12 +722,16 @@ export default function ResellerStorePage() {
           width: 36px; height: 36px; border-radius: 8px; flex-shrink: 0;
           border: 1px solid var(--border); margin-top: 22px;
         }
+        @media (max-width: 400px) {
+          .rs-hex-row { flex-wrap: wrap; }
+          .rs-hex-chip { margin-top: 0; }
+        }
 
         /* ── Pill toggle ─────────────────────────────── */
         .rs-pill-group {
           display: inline-flex; background: var(--surface);
           border: 1px solid var(--border); border-radius: 999px;
-          padding: 3px; gap: 2px;
+          padding: 3px; gap: 2px; max-width: 100%; flex-wrap: wrap;
         }
         .rs-pill {
           display: inline-flex; align-items: center; gap: 5px;
@@ -713,6 +740,7 @@ export default function ResellerStorePage() {
           touch-action: manipulation; -webkit-tap-highlight-color: transparent;
           transition: background 150ms, color 150ms;
           background: transparent; color: var(--text-dim);
+          min-height: 36px;
         }
         .rs-pill:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
         .rs-pill--active { background: var(--accent); color: #fff; }
@@ -726,6 +754,7 @@ export default function ResellerStorePage() {
           border: 2px dashed var(--border); background: var(--surface);
           transition: border-color 150ms, background 150ms;
           touch-action: manipulation; -webkit-tap-highlight-color: transparent;
+          min-height: 56px; text-align: center;
         }
         .rs-dropzone:hover, .rs-dropzone:focus-visible {
           border-color: var(--accent); background: var(--accent-soft);
@@ -735,6 +764,7 @@ export default function ResellerStorePage() {
         .rs-dropzone__status {
           display: flex; align-items: center; gap: 7px;
           font-size: .82rem; color: var(--text-dim); font-weight: 600;
+          flex-wrap: wrap; justify-content: center;
         }
         .rs-dropzone__status--replace { color: var(--accent-bright); }
         .rs-spinner {
@@ -752,7 +782,7 @@ export default function ResellerStorePage() {
         .rs-upload-preview img { display: block; width: 100%; max-height: 120px; object-fit: cover; }
         .rs-upload-preview__remove {
           position: absolute; top: 6px; right: 6px;
-          width: 24px; height: 24px; border-radius: 50%;
+          width: 28px; height: 28px; border-radius: 50%;
           background: rgba(0,0,0,.55); border: none; cursor: pointer;
           display: flex; align-items: center; justify-content: center; color: #fff;
           transition: background 150ms; touch-action: manipulation;
@@ -765,11 +795,12 @@ export default function ResellerStorePage() {
           display: flex; align-items: flex-start; gap: 8px;
           padding: 10px 12px; border-radius: 9px; font-size: .8rem;
           background: var(--surface-raised); border: 1px solid var(--border);
-          color: var(--text-dim); line-height: 1.5;
+          color: var(--text-dim); line-height: 1.5; flex-wrap: wrap;
         }
         .rs-notice a { color: var(--accent-bright); }
         .rs-notice code {
           background: var(--surface); padding: 1px 5px; border-radius: 4px; font-size: .78rem;
+          word-break: break-all;
         }
 
         /* ── Form footer ─────────────────────────────── */
@@ -777,6 +808,7 @@ export default function ResellerStorePage() {
           display: flex; align-items: center; justify-content: space-between;
           gap: 12px; padding-top: 20px; margin-top: 20px;
           border-top: 1px dashed var(--border);
+          flex-wrap: wrap;
         }
         .rs-unsaved {
           font-size: .76rem; color: var(--text-faint);
@@ -789,10 +821,15 @@ export default function ResellerStorePage() {
         }
         @media (prefers-reduced-motion: reduce) { .rs-unsaved-dot { animation: none; } }
         @keyframes rs-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .4; } }
+        @media (max-width: 480px) {
+          .rs-form-footer { flex-direction: column-reverse; align-items: stretch; gap: 10px; }
+          .rs-form-footer .btn { width: 100%; }
+          .rs-unsaved { justify-content: center; }
+        }
 
         /* ── Preview column ──────────────────────────── */
         .rs-preview-col { display: flex; flex-direction: column; gap: 14px; }
-        @media (min-width: 721px) { .rs-preview-col { position: sticky; top: 20px; } }
+        @media (min-width: 761px) { .rs-preview-col { position: sticky; top: 20px; } }
         .rs-preview-label {
           font-size: .68rem; font-weight: 800; text-transform: uppercase;
           letter-spacing: .1em; color: var(--text-faint); font-family: var(--font-mono);
@@ -832,8 +869,8 @@ export default function ResellerStorePage() {
           width: 38px; height: 38px; border-radius: 9px; overflow: hidden; flex-shrink: 0;
           border: 1px solid;
         }
-        .rs-voucher__name    { font-weight: 800; font-size: .88rem; }
-        .rs-voucher__tagline { font-size: .68rem; margin-top: 1px; }
+        .rs-voucher__name    { font-weight: 800; font-size: .88rem; word-break: break-word; }
+        .rs-voucher__tagline { font-size: .68rem; margin-top: 1px; word-break: break-word; }
 
         .rs-voucher__welcome {
           font-size: .7rem; line-height: 1.5; padding: 8px 14px;
@@ -847,11 +884,11 @@ export default function ResellerStorePage() {
         .rs-voucher__bundles { padding: 10px 10px 14px; display: flex; flex-direction: column; gap: 6px; }
         .rs-voucher__bundle {
           display: flex; align-items: center; justify-content: space-between;
-          padding: 8px 10px; border-radius: 8px; border: 1px solid;
+          padding: 8px 10px; border-radius: 8px; border: 1px solid; gap: 8px;
         }
         .rs-voucher__net   { font-size: .66rem; font-weight: 800; }
         .rs-voucher__gb    { font-size: .74rem; font-weight: 600; }
-        .rs-voucher__price { font-size: .76rem; font-weight: 700; font-family: var(--font-mono); }
+        .rs-voucher__price { font-size: .76rem; font-weight: 700; font-family: var(--font-mono); white-space: nowrap; }
         .rs-voucher__buy {
           font-size: .66rem; font-weight: 800; padding: 4px 10px;
           border: none; cursor: default; letter-spacing: .02em;
@@ -876,8 +913,9 @@ export default function ResellerStorePage() {
         .rs-voucher__slug {
           font-family: var(--font-mono); font-size: .68rem; font-weight: 700;
           letter-spacing: .05em; color: var(--text-dim);
+          overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0;
         }
-        .rs-voucher__barcode { display: flex; gap: 1.5px; align-items: flex-end; height: 16px; }
+        .rs-voucher__barcode { display: flex; gap: 1.5px; align-items: flex-end; height: 16px; flex-shrink: 0; }
         .rs-voucher__barcode span { display: block; width: 2px; background: var(--text-faint); }
 
         /* ── Meta cards below preview ────────────────── */
@@ -886,11 +924,12 @@ export default function ResellerStorePage() {
           padding: 5px 12px; border-radius: 999px; font-size: .73rem; font-weight: 700;
           font-family: var(--font-mono);
           background: var(--accent-soft); border: 1px solid var(--accent-border);
-          color: var(--accent-bright);
+          color: var(--accent-bright); max-width: 100%; overflow: hidden; text-overflow: ellipsis;
         }
         .rs-live-row {
           display: flex; align-items: center; gap: 10px; padding: 10px 12px;
           background: var(--surface-raised); border: 1px solid var(--border); border-radius: 10px;
+          flex-wrap: wrap;
         }
         .rs-live-row__url {
           flex: 1; min-width: 0; font-family: var(--font-mono); font-size: .71rem;
@@ -905,11 +944,12 @@ export default function ResellerStorePage() {
         .rs-live-link:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 3px; }
         .rs-share-btn {
           display: flex; align-items: center; justify-content: center; gap: 8px;
-          width: 100%; padding: 11px; border-radius: 10px; font-size: .86rem; font-weight: 700;
+          width: 100%; padding: 12px; border-radius: 10px; font-size: .86rem; font-weight: 700;
           border: 1px solid var(--accent-border); background: var(--accent-soft);
           color: var(--accent-bright); cursor: pointer;
           touch-action: manipulation; -webkit-tap-highlight-color: transparent;
           transition: background 150ms, border-color 150ms;
+          min-height: 44px;
         }
         .rs-share-btn:hover:not(:disabled) { background: rgba(44,123,229,.2); border-color: var(--accent); }
         .rs-share-btn:disabled { opacity: .45; cursor: not-allowed; }
@@ -929,7 +969,7 @@ export default function ResellerStorePage() {
               <Icon name="storefront" size={12} aria-hidden="true" /> Reseller
             </span>
             <h1>My store</h1>
-            <p className="muted">Customise your storefront voucher. The preview on the right updates live.</p>
+            <p className="muted">Customise your storefront voucher. The preview updates live.</p>
           </div>
         </div>
 
@@ -1068,7 +1108,7 @@ export default function ResellerStorePage() {
                       <LogoFallback name={displayName} colour={accent} />
                     )}
                   </div>
-                  <div>
+                  <div style={{ minWidth: 0 }}>
                     <div className="rs-voucher__name" style={{ color: pv.text }}>{displayName}</div>
                     <div className="rs-voucher__tagline" style={{ color: pv.muted }}>
                       {form.storeTagline || 'Your tagline'}
