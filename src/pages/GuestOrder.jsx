@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api, apiErrorMessage } from '../api/api';
 import { useNotify } from '../context/NotificationContext';
@@ -9,6 +9,7 @@ import Icon from '../components/Icon';
 import GhanaFlag from '../components/GhanaFlag';
 import BundlePicker from '../components/BundlePicker';
 import { usePricingCatalog } from '../hooks/usePricingCatalog';
+import { checkNetworkMatch, networkLabel } from '../utils/phoneNetwork';
 
 const PHONE_PATTERN = /^0[2359]\d{8}$/;
 
@@ -43,10 +44,25 @@ export default function GuestOrder() {
   const pricingReady = pricingStatus === 'ready';
   const pricingFailed = pricingStatus === 'error';
 
+  // Warns (and blocks submission) when the number typed doesn't belong to
+  // the network the user picked — e.g. an AT/Telecel number selected as MTN.
+  // Only fires once we can actually recognize a prefix; stays silent while
+  // the field is empty/too short or the prefix isn't in our table.
+  const networkCheck = useMemo(
+    () => checkNetworkMatch(network, phoneNumber),
+    [network, phoneNumber]
+  );
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!PHONE_PATTERN.test(phoneNumber)) {
       notify.error('Enter a valid Ghana number, e.g. 0241234567.');
+      return;
+    }
+    if (networkCheck.mismatch) {
+      notify.error(
+        `That number looks like ${networkLabel(networkCheck.detectedNetwork)}, not ${networkLabel(network)}. Please fix the network or the number before continuing.`
+      );
       return;
     }
     setBusy(true);
@@ -211,6 +227,15 @@ export default function GuestOrder() {
         }
         .pricing-error strong { color: var(--text); }
 
+        .network-warning {
+          display: flex; align-items: flex-start; gap: 10px;
+          background: rgba(217, 119, 6, 0.1); border: 1px solid #d97706;
+          border-radius: var(--radius-sm); padding: 12px 14px; margin-top: 8px;
+          font-size: 0.85rem; color: #b45309;
+        }
+        .network-warning .material-symbols-rounded { color: #d97706; flex-shrink: 0; margin-top: 1px; }
+        .network-warning strong { color: inherit; }
+
         @media (max-width: 540px) {
           .status-check__form { flex-direction: column; align-items: stretch; }
           .order-hero { padding-top: 24px; }
@@ -290,7 +315,23 @@ export default function GuestOrder() {
                   />
                 </label>
 
-                <button className="btn btn--primary btn--block" type="submit" disabled={busy || !pricingReady}>
+                {networkCheck.mismatch && (
+                  <div className="network-warning">
+                    <Icon name="warning" size={18} />
+                    <span>
+                      <strong>Wrong network selected?</strong> This number looks like{' '}
+                      <strong>{networkLabel(networkCheck.detectedNetwork)}</strong>, but you've picked{' '}
+                      <strong>{networkLabel(network)}</strong>. Data sent to the wrong network can't be
+                      refunded — please double-check before continuing.
+                    </span>
+                  </div>
+                )}
+
+                <button
+                  className="btn btn--primary btn--block"
+                  type="submit"
+                  disabled={busy || !pricingReady || networkCheck.mismatch}
+                >
                   <Icon name="arrow_forward" size={18} />
                   {busy ? (redirecting ? 'Redirecting to Paystack…' : 'Starting order…') : 'Continue to payment'}
                 </button>

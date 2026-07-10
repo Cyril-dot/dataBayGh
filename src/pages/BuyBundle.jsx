@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Link, useOutletContext } from 'react-router-dom';
 import { api, apiErrorMessage } from '../api/api';
 import { useNotify } from '../context/NotificationContext';
@@ -6,6 +6,7 @@ import NetworkBadge from '../components/NetworkBadge';
 import Icon from '../components/Icon';
 import BundlePicker from '../components/BundlePicker';
 import { usePricingCatalog } from '../hooks/usePricingCatalog';
+import { checkNetworkMatch, networkLabel } from '../utils/phoneNetwork';
 
 const PHONE_PATTERN = /^0[2359]\d{8}$/;
 
@@ -23,10 +24,23 @@ export default function BuyBundle() {
   const pricingReady = pricingStatus === 'ready';
   const pricingFailed = pricingStatus === 'error';
 
+  // Warns (and blocks submission) when the number typed doesn't belong to
+  // the network selected — e.g. an AT/Telecel number selected as MTN.
+  const networkCheck = useMemo(
+    () => checkNetworkMatch(network, phoneNumber),
+    [network, phoneNumber]
+  );
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!PHONE_PATTERN.test(phoneNumber)) {
       notify.error('Enter a valid Ghana number, e.g. 0241234567.');
+      return;
+    }
+    if (networkCheck.mismatch) {
+      notify.error(
+        `That number looks like ${networkLabel(networkCheck.detectedNetwork)}, not ${networkLabel(network)}. Please fix the network or the number before continuing.`
+      );
       return;
     }
     setBusy(true);
@@ -78,7 +92,23 @@ export default function BuyBundle() {
             <input value={phoneNumber} onChange={(e) => setPhoneNumber(e.target.value)} placeholder="0241234567" />
           </label>
 
-          <button className="btn btn--primary btn--block" type="submit" disabled={busy || !pricingReady}>
+          {networkCheck.mismatch && (
+            <div className="network-warning">
+              <Icon name="warning" size={18} />
+              <span>
+                <strong>Wrong network selected?</strong> This number looks like{' '}
+                <strong>{networkLabel(networkCheck.detectedNetwork)}</strong>, but you've picked{' '}
+                <strong>{networkLabel(network)}</strong>. Data sent to the wrong network can't be
+                refunded — please double-check before continuing.
+              </span>
+            </div>
+          )}
+
+          <button
+            className="btn btn--primary btn--block"
+            type="submit"
+            disabled={busy || !pricingReady || networkCheck.mismatch}
+          >
             <Icon name="shopping_cart_checkout" size={18} />
             {busy ? 'Placing order…' : 'Buy bundle from wallet'}
           </button>
