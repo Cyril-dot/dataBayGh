@@ -167,6 +167,10 @@ export default function AdminDashboard() {
                 <span className="admin-breakdown__label">Pending payout value</span>
                 <span className="admin-breakdown__value">{fmtGhc(data.totalPendingPayoutsGhc)}</span>
               </div>
+              <div className="admin-breakdown__item">
+                <span className="admin-breakdown__label">Affiliate earnings owed</span>
+                <span className="admin-breakdown__value">{fmtGhc(data.totalAffiliateEarningsLiabilityGhc)}</span>
+              </div>
             </div>
           </div>
 

@@ -23,7 +23,7 @@
  *                  referring reseller's override if the user was referred)
  *    reseller    — dashboard, pricing, store settings, share, sub-customers, payouts
  *    storefront  — public store browse + guest/wallet checkout
- *    affiliate   — activate, deactivate, dashboard, commission history
+ *    affiliate   — activate, deactivate, dashboard, commission history, payouts
  *    admin       — pricing, users, resellers, payouts, orders, transactions, Big Dreams
  * ============================================================================
  */
@@ -245,7 +245,11 @@ pricing: {
   //
   // Any authenticated user (USER, RESELLER, ADMIN) can join the affiliate programme.
   // No fee, no approval. Commission = 2% of sellingPriceGhc on referred user orders.
-  // Commissions credited instantly to wallet; reversed if the order is refunded.
+  //
+  // IMPORTANT: commissions are credited to a SEPARATE earnings balance
+  // (affiliateEarningsGhc on the backend) — NOT the wallet. They are reversed
+  // if the underlying order is refunded, and are cashed out via requestPayout(),
+  // exactly like reseller payouts, but drawing from earnings, never the wallet.
   affiliate: {
     // POST /api/v1/affiliate/activate
     // Idempotent — returns { affiliateCode, referralUrl, active }
@@ -258,8 +262,9 @@ pricing: {
       unwrap(http.delete('/api/v1/affiliate/deactivate')),
 
     // GET /api/v1/affiliate/dashboard
-    // Returns sign-up counts, commission totals, wallet balance, referral URL.
-    // 403 if not currently active.
+    // Returns sign-up counts, commission totals, availableEarningsGhc
+    // (the payout-eligible balance — separate from wallet balance),
+    // and referral URL. 403 if not currently active.
     getDashboard: () =>
       unwrap(http.get('/api/v1/affiliate/dashboard')),
 
@@ -268,6 +273,16 @@ pricing: {
     // 403 if not currently active.
     getCommissionHistory: (page = 0, size = 10) =>
       unwrap(http.get('/api/v1/affiliate/commissions', { params: { page, size } })),
+
+    // POST /api/v1/affiliate/payouts
+    // Request a cash-out against availableEarningsGhc. Never touches wallet balance.
+    requestPayout: (payload) =>
+      unwrap(http.post('/api/v1/affiliate/payouts', payload)),
+
+    // GET /api/v1/affiliate/payouts?page=0&size=10
+    // Paginated affiliate payout history (separate from reseller payout history).
+    getPayoutHistory: (page = 0, size = 10) =>
+      unwrap(http.get('/api/v1/affiliate/payouts', { params: { page, size } })),
   },
 
   // ── Admin ─────────────────────────────────────────────────────────────────
