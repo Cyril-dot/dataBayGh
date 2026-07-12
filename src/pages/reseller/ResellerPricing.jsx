@@ -6,6 +6,7 @@ import Spinner from '../../components/Spinner';
 import EmptyState from '../../components/EmptyState';
 import ConfirmModal from '../../components/ConfirmModal';
 import Icon from '../../components/Icon';
+import usePricingCatalog from '../../hooks/usePricingCatalog';
 
 const fmtGhc = (n) => `GH₵ ${Number(n ?? 0).toFixed(2)}`;
 const NETWORKS = ['MTN', 'TELECEL', 'AIRTELTIGO'];
@@ -18,6 +19,12 @@ export default function ResellerPricing() {
   const [busy, setBusy] = useState(false);
   const [pendingDelete, setPendingDelete] = useState(null);
   const [deleting, setDeleting] = useState(false);
+
+  // Cost pricing: whatever this reseller pays. Resolved server-side by
+  // /api/v1/pricing/effective — the admin's public price, or the
+  // referring reseller's price if this reseller was themselves referred.
+  // This is the floor the reseller's own selling price must sit above.
+  const { priceFor: costPriceFor, status: costStatus, retry: retryCost } = usePricingCatalog();
 
   const load = () => {
     setLoading(true);
@@ -34,6 +41,8 @@ export default function ResellerPricing() {
   }, []);
 
   const update = (key) => (e) => setForm((f) => ({ ...f, [key]: e.target.value }));
+
+  const formCostPrice = costPriceFor(form.network, form.capacityGb);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -71,6 +80,13 @@ export default function ResellerPricing() {
 
   const networksCovered = rows ? new Set(rows.map((r) => r.network)).size : 0;
 
+  // Merge the reseller's own saved rows with their resolved cost price,
+  // so the saved-prices table can show margin too, not just the number
+  // they typed in.
+  const rowsWithCost = rows
+    ? rows.map((r) => ({ ...r, costPriceGhc: costPriceFor(r.network, r.capacityGb) }))
+    : rows;
+
   return (
     <div className="stack-lg">
       {/* Page-specific layout styles — shares tokens/animations from the global stylesheet */}
@@ -90,6 +106,21 @@ export default function ResellerPricing() {
         .pp-tips { display: flex; flex-direction: column; gap: 10px; margin-top: 16px; padding-top: 16px; border-top: 1px dashed var(--border); }
         .pp-tip { display: flex; gap: 8px; font-size: 0.82rem; color: var(--text-dim); line-height: 1.5; }
         .pp-tip .material-symbols-rounded { color: var(--accent-bright); flex-shrink: 0; margin-top: 1px; }
+
+        .pp-cost-banner {
+          display: flex; align-items: center; justify-content: space-between; gap: 10px;
+          border: 1px solid var(--border); border-radius: var(--radius);
+          background: var(--surface-raised); padding: 10px 12px; margin-top: 4px;
+        }
+        .pp-cost-banner__label { font-size: 0.78rem; color: var(--text-dim); }
+        .pp-cost-banner__value { font-family: var(--font-mono); font-weight: 700; }
+        .pp-cost-banner__value--missing { color: var(--text-faint); font-weight: 500; font-style: italic; }
+        .pp-cost-banner--error { color: var(--danger, #c0392b); }
+        .pp-cost-banner__retry { background: none; border: none; padding: 0; color: var(--accent-bright); font-size: 0.78rem; cursor: pointer; text-decoration: underline; }
+
+        .pp-margin { font-size: 0.75rem; }
+        .pp-margin--ok { color: var(--text-dim); }
+        .pp-margin--warn { color: var(--danger, #c0392b); font-weight: 600; }
 
         /* Saved prices: table on wide screens, stacked cards on narrow */
         .pp-table-view { display: block; }
@@ -131,10 +162,41 @@ export default function ResellerPricing() {
               <span>Capacity (GB)</span>
               <input type="number" min="0.1" step="0.1" required value={form.capacityGb} onChange={update('capacityGb')} />
             </label>
+
+            {/* Cost price for whatever network/capacity is currently selected.
+                Resolved from the admin's public price, or from the referring
+                reseller's price if this reseller was referred by one — the
+                backend decides which, this just displays it. */}
+            <div className={`pp-cost-banner ${costStatus === 'error' ? 'pp-cost-banner--error' : ''}`}>
+              <span className="pp-cost-banner__label">
+                Your cost price ({form.network}, {form.capacityGb || '—'}GB)
+              </span>
+              {costStatus === 'loading' && <span className="pp-cost-banner__value pp-cost-banner__value--missing">Loading…</span>}
+              {costStatus === 'error' && (
+                <span>
+                  Couldn&apos;t load cost price.{' '}
+                  <button type="button" className="pp-cost-banner__retry" onClick={retryCost}>
+                    Retry
+                  </button>
+                </span>
+              )}
+              {costStatus === 'ready' && formCostPrice != null && (
+                <span className="pp-cost-banner__value">{fmtGhc(formCostPrice)}</span>
+              )}
+              {costStatus === 'ready' && formCostPrice == null && (
+                <span className="pp-cost-banner__value pp-cost-banner__value--missing">Not priced for this bundle</span>
+              )}
+            </div>
+
             <label className="form__field">
               <span>Selling price (GH₵)</span>
               <input type="number" min="0.01" step="0.01" required value={form.sellingPriceGhc} onChange={update('sellingPriceGhc')} />
             </label>
+            {formCostPrice != null && form.sellingPriceGhc !== '' && Number(form.sellingPriceGhc) < formCostPrice && (
+              <p className="pp-margin pp-margin--warn">
+                This is below your cost price of {fmtGhc(formCostPrice)} — saving will fail.
+              </p>
+            )}
             <button className="btn btn--primary btn--block" type="submit" disabled={busy}>
               {busy ? 'Saving…' : 'Save price'}
             </button>
@@ -173,7 +235,7 @@ export default function ResellerPricing() {
         {!loading && (!rows || rows.length === 0) && (
           <EmptyState title="No prices set yet" hint="Add your first selling price above." />
         )}
-        {!loading && rows && rows.length > 0 && (
+        {!loading && rowsWithCost && rowsWithCost.length > 0 && (
           <>
             <div className="table-wrap pp-table-view">
               <table className="table">
@@ -181,18 +243,26 @@ export default function ResellerPricing() {
                   <tr>
                     <th>Network</th>
                     <th>Capacity</th>
+                    <th>Cost price</th>
                     <th>Selling price</th>
                     <th>Updated</th>
                     <th />
                   </tr>
                 </thead>
                 <tbody>
-                  {rows.map((r) => (
+                  {rowsWithCost.map((r) => (
                     <tr key={r.id}>
                       <td>
                         <NetworkBadge network={r.network} />
                       </td>
                       <td>{r.capacityGb} GB</td>
+                      <td className="muted mono">
+                        {costStatus === 'ready'
+                          ? r.costPriceGhc != null
+                            ? fmtGhc(r.costPriceGhc)
+                            : '—'
+                          : '…'}
+                      </td>
                       <td className="mono">{fmtGhc(r.sellingPriceGhc)}</td>
                       <td className="muted">{new Date(r.updatedAt).toLocaleDateString()}</td>
                       <td>
@@ -207,7 +277,7 @@ export default function ResellerPricing() {
             </div>
 
             <div className="pp-list-view">
-              {rows.map((r) => (
+              {rowsWithCost.map((r) => (
                 <div className="pp-row" key={r.id}>
                   <div className="pp-row__top">
                     <NetworkBadge network={r.network} />
@@ -215,7 +285,8 @@ export default function ResellerPricing() {
                   </div>
                   <div className="pp-row__bottom">
                     <span className="pp-row__meta">
-                      {r.capacityGb} GB · Updated {new Date(r.updatedAt).toLocaleDateString()}
+                      {r.capacityGb} GB · Cost {costStatus === 'ready' && r.costPriceGhc != null ? fmtGhc(r.costPriceGhc) : '—'} · Updated{' '}
+                      {new Date(r.updatedAt).toLocaleDateString()}
                     </span>
                     <button className="link link--danger" onClick={() => setPendingDelete(r)}>
                       Delete
