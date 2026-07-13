@@ -13,10 +13,13 @@ import Spinner from '../components/Spinner';
    AirtelTigo: 026, 027, 056, 057
    Built into both a lookup map (prefix -> network) and a combined regex
    so validation always stays in sync with the prefix list below. */
+// NOTE: prefixes here are the 2 digits that follow the leading 0
+// (so MTN's "024" is stored as "24"). The leading 0 is added once,
+// by PHONE_PATTERN below — storing it twice was the earlier bug.
 const NETWORK_PREFIXES = {
-  MTN:        ['024', '025', '053', '054', '055', '059'],
-  TELECEL:    ['020', '050'],
-  AIRTELTIGO: ['026', '027', '056', '057'],
+  MTN:        ['24', '25', '53', '54', '55', '59'],
+  TELECEL:    ['20', '50'],
+  AIRTELTIGO: ['26', '27', '56', '57'],
 };
 
 const PREFIX_TO_NETWORK = Object.entries(NETWORK_PREFIXES).reduce((acc, [net, prefixes]) => {
@@ -31,7 +34,7 @@ const PHONE_PATTERN = new RegExp(`^0(${ALL_PREFIXES.join('|')})\\d{7}$`);
 // Given a validated phone number, returns which network it belongs to
 // (MTN / TELECEL / AIRTELTIGO), or null if the prefix isn't recognised.
 function getNetworkFromPhone(phone) {
-  const prefix = phone?.slice(0, 3);
+  const prefix = phone?.slice(1, 3); // digits after the leading 0
   return PREFIX_TO_NETWORK[prefix] ?? null;
 }
 
