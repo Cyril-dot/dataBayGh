@@ -7,7 +7,34 @@ import Icon from '../components/Icon';
 import NetworkBadge from '../components/NetworkBadge';
 import Spinner from '../components/Spinner';
 
-const PHONE_PATTERN = /^0[2359]\d{8}$/;
+/* ── Ghana mobile number prefixes, grouped by network ────────────────────
+   MTN:        024, 025, 053, 054, 055, 059
+   Telecel:    020, 050
+   AirtelTigo: 026, 027, 056, 057
+   Built into both a lookup map (prefix -> network) and a combined regex
+   so validation always stays in sync with the prefix list below. */
+const NETWORK_PREFIXES = {
+  MTN:        ['024', '025', '053', '054', '055', '059'],
+  TELECEL:    ['020', '050'],
+  AIRTELTIGO: ['026', '027', '056', '057'],
+};
+
+const PREFIX_TO_NETWORK = Object.entries(NETWORK_PREFIXES).reduce((acc, [net, prefixes]) => {
+  prefixes.forEach((p) => { acc[p] = net; });
+  return acc;
+}, {});
+
+const ALL_PREFIXES = Object.values(NETWORK_PREFIXES).flat();
+// 0 + 2-digit prefix + 7 more digits = 10 digits total, e.g. 0241234567
+const PHONE_PATTERN = new RegExp(`^0(${ALL_PREFIXES.join('|')})\\d{7}$`);
+
+// Given a validated phone number, returns which network it belongs to
+// (MTN / TELECEL / AIRTELTIGO), or null if the prefix isn't recognised.
+function getNetworkFromPhone(phone) {
+  const prefix = phone?.slice(0, 3);
+  return PREFIX_TO_NETWORK[prefix] ?? null;
+}
+
 const fmtGhc = (n) => `GH₵ ${Number(n ?? 0).toFixed(2)}`;
 
 /* ── Network colours ─────────────────────────────────────────────────────── */
@@ -135,6 +162,19 @@ export default function PublicStorefront() {
       setPhoneErr('Enter a valid Ghana number, e.g. 0241234567');
       return false;
     }
+
+    // Cross-check: make sure the number actually belongs to the
+    // network of the bundle being purchased (e.g. don't let a
+    // Telecel number through when an MTN bundle is selected).
+    const phoneNet = getNetworkFromPhone(phone);
+    if (selected && phoneNet && phoneNet !== selected.network) {
+      setPhoneErr(
+        `This looks like a ${NET_LABEL[phoneNet] ?? phoneNet} number — ` +
+        `you selected an ${NET_LABEL[selected.network] ?? selected.network} bundle.`
+      );
+      return false;
+    }
+
     setPhoneErr('');
     return true;
   };
