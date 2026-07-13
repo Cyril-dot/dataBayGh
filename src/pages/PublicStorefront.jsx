@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { api, apiErrorMessage } from '../api/api';
 import { useAuth } from '../context/AuthContext';
 import { useNotify } from '../context/NotificationContext';
+import { usePricingByStoreSlug } from '../hooks/usePricingCatalog';
 import Icon from '../components/Icon';
 import NetworkBadge from '../components/NetworkBadge';
 import Spinner from '../components/Spinner';
@@ -54,6 +55,23 @@ export default function PublicStorefront() {
   const [store,        setStore]        = useState(null);
   const [storeLoading, setStoreLoading] = useState(true);
   const [storeError,   setStoreError]   = useState(false);
+
+  /* ── Live pricing for this store's slug ───────────────────────
+     Store branding + the bundle universe still come from
+     getStore(slug) below. This hook is used ONLY to resolve the
+     actual price shown/charged for each bundle, straight from
+     GET /api/v1/pricing/store/:slug — so prices stay live even if
+     the reseller updates them after the store payload was cached. */
+  const { priceFor: slugPriceFor, status: priceStatus } = usePricingByStoreSlug(slug);
+
+  // Resolves the price to display/use for a bundle: prefer the live
+  // store-slug pricing row, fall back to whatever getStore(slug)
+  // already gave us (e.g. while the pricing table is still loading).
+  const priceOf = (bundle) => {
+    if (!bundle) return null;
+    const live = priceStatus === 'ready' ? slugPriceFor(bundle.network, bundle.capacityGb) : null;
+    return live ?? bundle.sellingPriceGhc;
+  };
 
   /* ── Selection + form ───────────────────────────────────────── */
   const [selected,    setSelected]    = useState(null);   // bundle object
@@ -112,7 +130,7 @@ const handlePaystackCheckout = async () => {
     const handler = window.PaystackPop.setup({
       key:      import.meta.env.VITE_PAYSTACK_PUBLIC_KEY,
       email:    `guest@${window.location.hostname}`,
-      amount:   Math.round(Number(selected.sellingPriceGhc) * 100),
+      amount:   Math.round(Number(priceOf(selected)) * 100),
       currency: 'GHS',
       ref:      order.paystackRef,
       callback: function (response) {
@@ -388,7 +406,7 @@ const handlePaystackCheckout = async () => {
                       >
                         <span className="sf-bundle-card__size">{b.capacityGb}GB</span>
                         <span className="sf-bundle-card__price" style={{ color: isActive ? colour : undefined }}>
-                          {fmtGhc(b.sellingPriceGhc)}
+                          {fmtGhc(priceOf(b))}
                         </span>
                         <span className="sf-bundle-card__net">{NET_LABEL[b.network] ?? b.network}</span>
                       </button>
@@ -409,7 +427,7 @@ const handlePaystackCheckout = async () => {
               <>
                 <h3>
                   <NetworkBadge network={selected.network} />
-                  {' '}{selected.capacityGb}GB — {fmtGhc(selected.sellingPriceGhc)}
+                  {' '}{selected.capacityGb}GB — {fmtGhc(priceOf(selected))}
                 </h3>
 
                 {/* Phone */}
@@ -468,7 +486,7 @@ const handlePaystackCheckout = async () => {
                   <div className="sf-summary-row">
                     <span className="sf-summary-row__label">Total</span>
                     <span className="sf-summary-row__value" style={{ color: themeColour }}>
-                      {fmtGhc(selected.sellingPriceGhc)}
+                      {fmtGhc(priceOf(selected))}
                     </span>
                   </div>
                 </div>
