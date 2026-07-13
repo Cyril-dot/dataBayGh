@@ -10,17 +10,6 @@ import Spinner from '../components/Spinner';
 const PHONE_PATTERN = /^0[2359]\d{8}$/;
 const fmtGhc = (n) => `GH₵ ${Number(n ?? 0).toFixed(2)}`;
 
-/* ── Paystack inline popup ───────────────────────────────────────────────── */
-function loadPaystack() {
-  return new Promise((resolve) => {
-    if (window.PaystackPop) { resolve(); return; }
-    const s  = document.createElement('script');
-    s.src    = 'https://js.paystack.co/v1/inline.js';
-    s.onload = resolve;
-    document.head.appendChild(s);
-  });
-}
-
 /* ── Network colours ─────────────────────────────────────────────────────── */
 const NET_COLOUR = {
   MTN:        '#FFCC00',
@@ -150,44 +139,38 @@ export default function PublicStorefront() {
     return true;
   };
 
-  /* ── Guest Paystack checkout ─────────────────────────────────── */
-const handlePaystackCheckout = async () => {
-  if (!validatePhone()) return;
-  setBusy(true);
-  try {
-    // 1. Initiate — get Paystack reference + amount
-    const order = await api.storefront.guestOrder(slug, {
-      network:     selected.network,
-      capacityGb:  selected.capacityGb,
-      phoneNumber: phone,
-    });
+  /* ── Guest Paystack checkout ───────────────────────────────────
+     CHANGE: no more inline popup / PaystackPop / public key on the
+     frontend. The backend already calls Paystack's /transaction/initialize
+     server-side (using the SECRET key) and now returns an
+     `authorizationUrl` on the order response — Paystack's own hosted
+     checkout page. We just redirect the browser there. Paystack will
+     redirect the customer back after payment to whatever callback URL
+     is configured (see PaystackService / Paystack dashboard settings). */
+  const handlePaystackCheckout = async () => {
+    if (!validatePhone()) return;
+    setBusy(true);
+    try {
+      const order = await api.storefront.guestOrder(slug, {
+        network:     selected.network,
+        capacityGb:  selected.capacityGb,
+        phoneNumber: phone,
+      });
 
-    // 2. Load Paystack popup
-    await loadPaystack();
-
-    const handler = window.PaystackPop.setup({
-      key:      import.meta.env.VITE_PAYSTACK_PUBLIC_KEY,
-      email:    `guest@${window.location.hostname}`,
-      amount:   Math.round(Number(priceOf(selected)) * 100),
-      currency: 'GHS',
-      ref:      order.paystackRef,
-      callback: function (response) {
-        setResult({ ...order, paidVia: 'paystack' });
-        notify.success('Payment successful! Your bundle is on its way.');
+      if (!order.authorizationUrl) {
+        notify.error('Could not start payment. Please try again.');
         setBusy(false);
-      },
-      onClose: function () {
-        notify.error('Payment cancelled.');
-        setBusy(false);
-      },
-    });
+        return;
+      }
 
-    handler.openIframe();
-  } catch (err) {
-    notify.error(apiErrorMessage(err, 'Could not initiate payment. Please try again.'));
-    setBusy(false);
-  }
-};
+      window.location.href = order.authorizationUrl;
+      // Intentionally no setBusy(false) here — we're navigating away.
+    } catch (err) {
+      notify.error(apiErrorMessage(err, 'Could not initiate payment. Please try again.'));
+      setBusy(false);
+    }
+  };
+
   /* ── Wallet checkout (logged-in customers only) ──────────────── */
   const handleWalletCheckout = async () => {
     if (!validatePhone()) return;
