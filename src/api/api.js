@@ -212,8 +212,12 @@ export const api = {
 pricing: {
     getEffective: () => unwrap(http.get('/api/v1/pricing/effective')),
     getPublic:    () => unwrap(http.get('/api/v1/pricing/public')),
+    // Reseller-only: full effective pricing table as a referred buyer would
+    // see it — this reseller's own ResellerPricing rows where set, admin
+    // public price as fallback everywhere else. isCustomPrice on each row
+    // tells you which branch was used.
+    getResellerEffective: () => unwrap(http.get('/api/v1/pricing/reseller/effective')),
   },
-
   // ── Reseller ──────────────────────────────────────────────────────────────
   reseller: {
     apply:        (payload) => unwrap(http.post('/api/v1/reseller/apply', payload)),

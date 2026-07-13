@@ -26,6 +26,14 @@ export default function ResellerPricing() {
   // This is the floor the reseller's own selling price must sit above.
   const { priceFor: costPriceFor, status: costStatus, retry: retryCost } = usePricingCatalog();
 
+  // Reseller's own effective/live pricing table: /api/v1/pricing/reseller/effective.
+  // This is what a buyer referred by THIS reseller would actually see —
+  // this reseller's own ResellerPricing rows where set, admin public price
+  // as fallback everywhere else. isCustomPrice on each row tells us which.
+  // Fetched separately and kept optional/non-blocking since it's supplementary
+  // context in the form, not core to the page's main function (saving prices).
+  const [effectiveRows, setEffectiveRows] = useState(null);
+
   const load = () => {
     setLoading(true);
     api.reseller
@@ -35,14 +43,32 @@ export default function ResellerPricing() {
       .finally(() => setLoading(false));
   };
 
+  const loadEffective = () => {
+    api.pricing
+      .getResellerEffective()
+      .then((data) => setEffectiveRows(data))
+      .catch(() => setEffectiveRows(null)); // non-critical, fail quietly
+  };
+
   useEffect(() => {
     load();
+    loadEffective();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const update = (key) => (e) => setForm((f) => ({ ...f, [key]: e.target.value }));
 
   const formCostPrice = costPriceFor(form.network, form.capacityGb);
+
+  const effectiveFor = (network, capacityGb) => {
+    if (!effectiveRows) return null;
+    const cap = Number(capacityGb);
+    return (
+      effectiveRows.find((r) => r.network === network && Number(r.capacityGb) === cap) || null
+    );
+  };
+
+  const formLivePrice = effectiveFor(form.network, form.capacityGb);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -56,6 +82,7 @@ export default function ResellerPricing() {
       notify.success('Pricing saved.');
       setForm((f) => ({ ...f, sellingPriceGhc: '' }));
       load();
+      loadEffective();
     } catch (err) {
       notify.error(apiErrorMessage(err, 'Selling price must be at or above your cost price.'));
     } finally {
@@ -71,6 +98,7 @@ export default function ResellerPricing() {
       notify.success('Pricing row deleted.');
       setPendingDelete(null);
       load();
+      loadEffective();
     } catch (err) {
       notify.error(apiErrorMessage(err, 'Could not delete this pricing row.'));
     } finally {
@@ -187,6 +215,26 @@ export default function ResellerPricing() {
                 <span className="pp-cost-banner__value pp-cost-banner__value--missing">Not priced for this bundle</span>
               )}
             </div>
+
+            {/* Current live price a referred buyer would see for this bundle —
+                this reseller's own price if set, admin default otherwise.
+                Lets the reseller see what's live right now before deciding
+                whether (and what) to change it. Renders nothing while
+                effectiveRows hasn't loaded or has no match, so it never
+                blocks the form. */}
+            {formLivePrice && (
+              <div className="pp-cost-banner">
+                <span className="pp-cost-banner__label">
+                  Current live price ({form.network}, {form.capacityGb || '—'}GB)
+                </span>
+                <span className="pp-cost-banner__value">
+                  {fmtGhc(formLivePrice.publicPriceGhc)}{' '}
+                  <span className="muted" style={{ fontWeight: 400 }}>
+                    ({formLivePrice.isCustomPrice ? 'your price' : 'admin default'})
+                  </span>
+                </span>
+              </div>
+            )}
 
             <label className="form__field">
               <span>Selling price (GH₵)</span>

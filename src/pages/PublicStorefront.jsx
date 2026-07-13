@@ -95,43 +95,43 @@ export default function PublicStorefront() {
   };
 
   /* ── Guest Paystack checkout ─────────────────────────────────── */
-  const handlePaystackCheckout = async () => {
-    if (!validatePhone()) return;
-    setBusy(true);
-    try {
-      // 1. Initiate — get Paystack reference + amount
-      const order = await api.storefront.guestOrder(slug, {
-        network:     selected.network,
-        capacityGb:  selected.capacityGb,
-        phoneNumber: phone,
-      });
+const handlePaystackCheckout = async () => {
+  if (!validatePhone()) return;
+  setBusy(true);
+  try {
+    // 1. Initiate — get Paystack reference + amount
+    const order = await api.storefront.guestOrder(slug, {
+      network:     selected.network,
+      capacityGb:  selected.capacityGb,
+      phoneNumber: phone,
+    });
 
-      // 2. Load Paystack popup
-      await loadPaystack();
+    // 2. Load Paystack popup
+    await loadPaystack();
 
-      const handler = window.PaystackPop.setup({
-        key:       import.meta.env.VITE_PAYSTACK_PUBLIC_KEY,
-        email:     `guest@${window.location.hostname}`,
-        amount:    Math.round(Number(selected.sellingPriceGhc) * 100),
-        currency:  'GHS',
-        ref:       order.paystackRef,
-        onSuccess: () => {
-          setResult({ ...order, paidVia: 'paystack' });
-          notify.success('Payment successful! Your bundle is on its way.');
-        },
-        onCancel: () => {
-          notify.error('Payment cancelled.');
-          setBusy(false);
-        },
-      });
+    const handler = window.PaystackPop.setup({
+      key:      import.meta.env.VITE_PAYSTACK_PUBLIC_KEY,
+      email:    `guest@${window.location.hostname}`,
+      amount:   Math.round(Number(selected.sellingPriceGhc) * 100),
+      currency: 'GHS',
+      ref:      order.paystackRef,
+      callback: function (response) {
+        setResult({ ...order, paidVia: 'paystack' });
+        notify.success('Payment successful! Your bundle is on its way.');
+        setBusy(false);
+      },
+      onClose: function () {
+        notify.error('Payment cancelled.');
+        setBusy(false);
+      },
+    });
 
-      handler.openIframe();
-    } catch (err) {
-      notify.error(apiErrorMessage(err, 'Could not initiate payment. Please try again.'));
-      setBusy(false);
-    }
-  };
-
+    handler.openIframe();
+  } catch (err) {
+    notify.error(apiErrorMessage(err, 'Could not initiate payment. Please try again.'));
+    setBusy(false);
+  }
+};
   /* ── Wallet checkout (logged-in customers only) ──────────────── */
   const handleWalletCheckout = async () => {
     if (!validatePhone()) return;
