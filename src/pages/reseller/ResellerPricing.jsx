@@ -6,7 +6,7 @@ import Spinner from '../../components/Spinner';
 import EmptyState from '../../components/EmptyState';
 import ConfirmModal from '../../components/ConfirmModal';
 import Icon from '../../components/Icon';
-import usePricingCatalog from '../../hooks/usePricingCatalog';
+import { useResellerCostCatalog } from '../../hooks/usePricingCatalog';
 
 const fmtGhc = (n) => `GH₵ ${Number(n ?? 0).toFixed(2)}`;
 const NETWORKS = ['MTN', 'TELECEL', 'AIRTELTIGO'];
@@ -20,19 +20,21 @@ export default function ResellerPricing() {
   const [pendingDelete, setPendingDelete] = useState(null);
   const [deleting, setDeleting] = useState(false);
 
-  // Cost pricing: whatever this reseller pays. Resolved server-side by
-  // /api/v1/pricing/effective — the admin's public price, or the
-  // referring reseller's price if this reseller was themselves referred.
-  // This is the floor the reseller's own selling price must sit above.
-  const { priceFor: costPriceFor, status: costStatus, retry: retryCost } = usePricingCatalog();
-
-  // Reseller's own effective/live pricing table: /api/v1/pricing/reseller/effective.
-  // This is what a buyer referred by THIS reseller would actually see —
-  // this reseller's own ResellerPricing rows where set, admin public price
-  // as fallback everywhere else. isCustomPrice on each row tells us which.
-  // Fetched separately and kept optional/non-blocking since it's supplementary
-  // context in the form, not core to the page's main function (saving prices).
-  const [effectiveRows, setEffectiveRows] = useState(null);
+  // Cost + live-price catalog: GET /api/v1/pricing/reseller/cost and
+  // /api/v1/pricing/reseller/effective. This reseller's own wholesale cost
+  // floor, and what a referred buyer currently pays. NOTE: this used to be
+  // usePricingCatalog() (i.e. /pricing/effective), which is wrong here —
+  // that endpoint falls back to the admin PUBLIC price, not the admin
+  // WHOLESALE reseller price, so it understated cost for any reseller with
+  // no referring reseller of their own. useResellerCostCatalog hits the
+  // correct reseller-only endpoints instead.
+  const {
+    costFor,
+    costStatus,
+    retryCost,
+    effectiveFor,
+    effectiveStatus,
+  } = useResellerCostCatalog();
 
   const load = () => {
     setLoading(true);
@@ -43,32 +45,21 @@ export default function ResellerPricing() {
       .finally(() => setLoading(false));
   };
 
-  const loadEffective = () => {
-    api.pricing
-      .getResellerEffective()
-      .then((data) => setEffectiveRows(data))
-      .catch(() => setEffectiveRows(null)); // non-critical, fail quietly
-  };
-
   useEffect(() => {
     load();
-    loadEffective();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const update = (key) => (e) => setForm((f) => ({ ...f, [key]: e.target.value }));
 
-  const formCostPrice = costPriceFor(form.network, form.capacityGb);
+  const formCostPrice = costFor(form.network, form.capacityGb);
 
-  const effectiveFor = (network, capacityGb) => {
-    if (!effectiveRows) return null;
-    const cap = Number(capacityGb);
-    return (
-      effectiveRows.find((r) => r.network === network && Number(r.capacityGb) === cap) || null
-    );
-  };
-
-  const formLivePrice = effectiveFor(form.network, form.capacityGb);
+  // Current live price a referred buyer would see for this bundle — this
+  // reseller's own price if set, admin default otherwise. Renders nothing
+  // while effectiveRows hasn't loaded or has no match, so it never blocks
+  // the form; kept supplementary/non-blocking on purpose (no error banner
+  // for effectiveStatus === 'error', unlike the cost banner below).
+  const formLivePrice = effectiveStatus === 'ready' ? effectiveFor(form.network, form.capacityGb) : null;
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -82,7 +73,6 @@ export default function ResellerPricing() {
       notify.success('Pricing saved.');
       setForm((f) => ({ ...f, sellingPriceGhc: '' }));
       load();
-      loadEffective();
     } catch (err) {
       notify.error(apiErrorMessage(err, 'Selling price must be at or above your cost price.'));
     } finally {
@@ -98,7 +88,6 @@ export default function ResellerPricing() {
       notify.success('Pricing row deleted.');
       setPendingDelete(null);
       load();
-      loadEffective();
     } catch (err) {
       notify.error(apiErrorMessage(err, 'Could not delete this pricing row.'));
     } finally {
@@ -112,7 +101,7 @@ export default function ResellerPricing() {
   // so the saved-prices table can show margin too, not just the number
   // they typed in.
   const rowsWithCost = rows
-    ? rows.map((r) => ({ ...r, costPriceGhc: costPriceFor(r.network, r.capacityGb) }))
+    ? rows.map((r) => ({ ...r, costPriceGhc: costFor(r.network, r.capacityGb) }))
     : rows;
 
   return (
@@ -192,9 +181,9 @@ export default function ResellerPricing() {
             </label>
 
             {/* Cost price for whatever network/capacity is currently selected.
-                Resolved from the admin's public price, or from the referring
-                reseller's price if this reseller was referred by one — the
-                backend decides which, this just displays it. */}
+                Resolved from the admin's WHOLESALE reseller price, or from the
+                upstream reseller's price if this reseller was themselves
+                referred — the backend decides which, this just displays it. */}
             <div className={`pp-cost-banner ${costStatus === 'error' ? 'pp-cost-banner--error' : ''}`}>
               <span className="pp-cost-banner__label">
                 Your cost price ({form.network}, {form.capacityGb || '—'}GB)
@@ -216,12 +205,6 @@ export default function ResellerPricing() {
               )}
             </div>
 
-            {/* Current live price a referred buyer would see for this bundle —
-                this reseller's own price if set, admin default otherwise.
-                Lets the reseller see what's live right now before deciding
-                whether (and what) to change it. Renders nothing while
-                effectiveRows hasn't loaded or has no match, so it never
-                blocks the form. */}
             {formLivePrice && (
               <div className="pp-cost-banner">
                 <span className="pp-cost-banner__label">

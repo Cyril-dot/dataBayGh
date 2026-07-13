@@ -44,6 +44,15 @@ import { BUNDLE_SIZES } from '../data/bundleCatalog';
  *  pages should use it (or `availableSizes`, keyed by network) instead
  *  of reading BUNDLE_SIZES directly, so an unpriced bundle never shows
  *  up as a blank/zero card.
+ *
+ * IMPORTANT — this hook is BUYER-facing only. priceFor()/getEffective()
+ * answer "what does the caller pay?" and fall back to the admin's PUBLIC
+ * price. A reseller's own wholesale COST is a different number (it falls
+ * back to the admin's WHOLESALE reseller price instead) — use
+ * useResellerCostCatalog below for that. Do not use this hook to show a
+ * reseller their cost price; for a reseller with no referring reseller of
+ * their own, priceFor() here will silently return the wrong (public,
+ * not wholesale) number.
  */
 export function usePricingCatalog() {
   const { isAuthenticated } = useAuth();
@@ -115,6 +124,135 @@ export function usePricingCatalog() {
     availableSizes,
     status,
     retry: load,
+    sizes: BUNDLE_SIZES,
+  };
+}
+
+/**
+ * Reseller-only companion to usePricingCatalog: drives the reseller's OWN
+ * pricing-management page (e.g. "My selling prices") — where a reseller
+ * needs to see (a) their wholesale cost floor and (b) what's currently
+ * live for buyers they refer, side by side, while they edit their own
+ * selling price.
+ *
+ *  - GET /api/v1/pricing/reseller/cost
+ *      -> costFor(network, capacityGb): this reseller's wholesale cost —
+ *         the floor their own selling price must sit above. Falls back to
+ *         the admin's WHOLESALE reseller price (not the public price), or
+ *         to the upstream reseller's price if this reseller was itself
+ *         referred. THIS is the correct endpoint for "what do I pay?" —
+ *         not /pricing/effective (see warning on usePricingCatalog above).
+ *
+ *  - GET /api/v1/pricing/reseller/effective
+ *      -> effectiveFor(network, capacityGb): what a buyer referred by
+ *         this reseller currently pays — this reseller's own
+ *         ResellerPricing row where set, admin public price as fallback
+ *         otherwise. row.isCustomPrice tells you which branch was used.
+ *
+ * The two tables are fetched and exposed independently (separate status
+ * flags) rather than merged, since a page may want to treat "couldn't
+ * load my live price" as non-blocking/supplementary while still treating
+ * "couldn't load my cost" as a hard error — that's a per-page call, not
+ * something this hook should decide for you.
+ */
+export function useResellerCostCatalog() {
+  const [costRows, setCostRows] = useState(null);
+  const [costStatus, setCostStatus] = useState('loading');
+
+  const [effectiveRows, setEffectiveRows] = useState(null);
+  const [effectiveStatus, setEffectiveStatus] = useState('loading');
+
+  const loadCost = useCallback(() => {
+    let active = true;
+    setCostStatus('loading');
+
+    api.pricing
+      .getResellerCost()
+      .then((data) => {
+        if (!active) return;
+        setCostRows(data);
+        setCostStatus('ready');
+      })
+      .catch(() => {
+        if (!active) return;
+        setCostRows(null);
+        setCostStatus('error');
+      });
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const loadEffective = useCallback(() => {
+    let active = true;
+    setEffectiveStatus('loading');
+
+    api.pricing
+      .getResellerEffective()
+      .then((data) => {
+        if (!active) return;
+        setEffectiveRows(data);
+        setEffectiveStatus('ready');
+      })
+      .catch(() => {
+        if (!active) return;
+        setEffectiveRows(null);
+        setEffectiveStatus('error');
+      });
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => loadCost(), [loadCost]);
+  useEffect(() => loadEffective(), [loadEffective]);
+
+  const costFor = useCallback(
+    (network, capacityGb) => {
+      if (costStatus !== 'ready' || !costRows) return null;
+      const row = costRows.find(
+        (r) => r.network === network && Number(r.capacityGb) === Number(capacityGb)
+      );
+      return row ? row.publicPriceGhc : null;
+    },
+    [costRows, costStatus]
+  );
+
+  const effectiveFor = useCallback(
+    (network, capacityGb) => {
+      if (effectiveStatus !== 'ready' || !effectiveRows) return null;
+      return (
+        effectiveRows.find(
+          (r) => r.network === network && Number(r.capacityGb) === Number(capacityGb)
+        ) || null
+      );
+    },
+    [effectiveRows, effectiveStatus]
+  );
+
+  // Which BUNDLE_SIZES have a cost row for a given network — mirrors
+  // usePricingCatalog.sizesFor.
+  const sizesFor = useCallback(
+    (network) => {
+      if (costStatus !== 'ready' || !costRows) return [];
+      const priced = new Set(
+        costRows.filter((r) => r.network === network).map((r) => Number(r.capacityGb))
+      );
+      return BUNDLE_SIZES.filter((size) => priced.has(Number(size)));
+    },
+    [costRows, costStatus]
+  );
+
+  return {
+    costFor,
+    costStatus,
+    retryCost: loadCost,
+    effectiveFor,
+    effectiveStatus,
+    retryEffective: loadEffective,
+    sizesFor,
     sizes: BUNDLE_SIZES,
   };
 }

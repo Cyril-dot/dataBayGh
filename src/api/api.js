@@ -209,7 +209,14 @@ export const api = {
   // is no guest-facing version of this endpoint, since pricing is resolved
   // from the caller's own account (User.referredByReseller), not a slug.
   // Rows: [{ network, capacityGb, publicPriceGhc }]
-pricing: {
+  //
+  // NOTE: getEffective/getPublic/getResellerEffective are all BUYER-facing —
+  // "what does the caller (or a buyer under them) pay?" They intentionally
+  // fall back to the admin's PUBLIC price. For "what does a reseller pay as
+  // their own wholesale cost?", use getResellerCost below instead — do not
+  // reuse getEffective for that, it resolves to the wrong number for
+  // resellers with no referring reseller.
+  pricing: {
     getEffective: () => unwrap(http.get('/api/v1/pricing/effective')),
     getPublic:    () => unwrap(http.get('/api/v1/pricing/public')),
     // Reseller-only: full effective pricing table as a referred buyer would
@@ -217,6 +224,11 @@ pricing: {
     // public price as fallback everywhere else. isCustomPrice on each row
     // tells you which branch was used.
     getResellerEffective: () => unwrap(http.get('/api/v1/pricing/reseller/effective')),
+    // Reseller-only: what THIS reseller pays as their own wholesale cost —
+    // the floor their own selling price must sit above. Falls back to the
+    // admin's WHOLESALE reseller price (not the public price), or to the
+    // upstream reseller's price if this reseller was itself referred.
+    getResellerCost: () => unwrap(http.get('/api/v1/pricing/reseller/cost')),
   },
   // ── Reseller ──────────────────────────────────────────────────────────────
   reseller: {
