@@ -44,6 +44,38 @@ function groupByNetwork(bundles) {
   }, {});
 }
 
+/*
+ * Merge store branding (from /api/v1/storefront/{slug}) with the
+ * reseller-resolved pricing table (from /api/v1/pricing/store/{slug}).
+ *
+ * getStore() carries branding + a bundle list, but its sellingPriceGhc
+ * has been unreliable (surfacing admin public price instead of the
+ * reseller's own custom price). getByStoreSlug() is confirmed to run
+ * through PricingService.buildPricingWithOverrides(reseller, false) —
+ * reseller's custom price where set, admin public price as fallback
+ * only per-bundle — so it's the source of truth for what a buyer here
+ * should actually pay.
+ *
+ * Rows are keyed by "network:capacityGb" and swapped in over whatever
+ * getStore() returned. If a bundle from getStore() has no matching
+ * pricing row (shouldn't normally happen), its original price is kept
+ * as a fallback rather than dropping the bundle from the grid.
+ */
+function mergeBundlePricing(bundles, priceRows) {
+  const priceMap = new Map(
+    priceRows.map((r) => [`${r.network}:${Number(r.capacityGb)}`, r])
+  );
+
+  return (bundles ?? []).map((b) => {
+    const row = priceMap.get(`${b.network}:${Number(b.capacityGb)}`);
+    return {
+      ...b,
+      sellingPriceGhc: row ? row.publicPriceGhc : b.sellingPriceGhc,
+      isCustomPrice:   row ? row.isCustomPrice   : false,
+    };
+  });
+}
+
 export default function PublicStorefront() {
   const { slug }    = useParams();
   const navigate    = useNavigate();
@@ -69,12 +101,17 @@ export default function PublicStorefront() {
   /* ── Load storefront ────────────────────────────────────────── */
   useEffect(() => {
     setStoreLoading(true);
-    api.storefront
-      .getStore(slug)
-      .then((data) => {
-        setStore(data);
+    setStoreError(false);
+
+    Promise.all([
+      api.storefront.getStore(slug),
+      api.pricing.getByStoreSlug(slug),
+    ])
+      .then(([storeData, priceRows]) => {
+        const bundles = mergeBundlePricing(storeData.bundles, priceRows);
+        setStore({ ...storeData, bundles });
         // Default to first network available
-        const first = data.bundles?.[0]?.network ?? null;
+        const first = bundles?.[0]?.network ?? null;
         setActiveNet(first);
       })
       .catch(() => setStoreError(true))

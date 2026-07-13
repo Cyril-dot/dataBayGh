@@ -219,6 +219,15 @@ export const api = {
   pricing: {
     getEffective: () => unwrap(http.get('/api/v1/pricing/effective')),
     getPublic:    () => unwrap(http.get('/api/v1/pricing/public')),
+    // No auth required. Same buyer-facing shape as getPublic/getEffective —
+    // this reseller's custom prices where set, admin public price as
+    // fallback — resolved by the reseller's public storeSlug instead of a
+    // resellerId or the caller's own account. NOTE: PublicStorefront.jsx
+    // does NOT use this — it gets its bundle list from
+    // storefront.getStore(slug) instead. This is here for other slug-based
+    // pricing previews (e.g. an admin screen checking a specific reseller's
+    // live prices without opening their full storefront).
+    getByStoreSlug: (storeSlug) => unwrap(http.get(`/api/v1/pricing/store/${storeSlug}`)),
     // Reseller-only: full effective pricing table as a referred buyer would
     // see it — this reseller's own ResellerPricing rows where set, admin
     // public price as fallback everywhere else. isCustomPrice on each row

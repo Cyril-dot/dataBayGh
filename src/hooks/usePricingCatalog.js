@@ -257,4 +257,66 @@ export function useResellerCostCatalog() {
   };
 }
 
+/**
+ * Standalone, slug-based buyer-facing pricing preview — for pages that
+ * need to look up a SPECIFIC reseller's live pricing table by their
+ * storeSlug (e.g. an admin "preview this reseller's storefront prices"
+ * screen), without going through PublicStorefront.jsx and without
+ * needing the reseller's userId.
+ *
+ * NOT used by PublicStorefront.jsx — that page gets its bundle list
+ * (with sellingPriceGhc already resolved) from
+ * api.storefront.getStore(slug) instead, which also carries store
+ * branding (name, tagline, logo, theme) alongside the bundles. Reach for
+ * this hook only when you need JUST the pricing rows for a slug, with no
+ * storefront chrome attached.
+ */
+export function usePricingByStoreSlug(storeSlug) {
+  const [rows, setRows] = useState(null);
+  const [status, setStatus] = useState('loading');
+
+  const load = useCallback(() => {
+    if (!storeSlug) {
+      setRows(null);
+      setStatus('error');
+      return () => {};
+    }
+
+    let active = true;
+    setStatus('loading');
+
+    api.pricing
+      .getByStoreSlug(storeSlug)
+      .then((data) => {
+        if (!active) return;
+        setRows(data);
+        setStatus('ready');
+      })
+      .catch(() => {
+        if (!active) return;
+        setRows(null);
+        setStatus('error');
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [storeSlug]);
+
+  useEffect(() => load(), [load]);
+
+  const priceFor = useCallback(
+    (network, capacityGb) => {
+      if (status !== 'ready' || !rows) return null;
+      const row = rows.find(
+        (r) => r.network === network && Number(r.capacityGb) === Number(capacityGb)
+      );
+      return row ? row.publicPriceGhc : null;
+    },
+    [rows, status]
+  );
+
+  return { rows, priceFor, status, retry: load };
+}
+
 export default usePricingCatalog;
