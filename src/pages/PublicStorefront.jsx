@@ -3,7 +3,6 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { api, apiErrorMessage } from '../api/api';
 import { useAuth } from '../context/AuthContext';
 import { useNotify } from '../context/NotificationContext';
-import { usePricingByStoreSlug } from '../hooks/usePricingCatalog';
 import Icon from '../components/Icon';
 import NetworkBadge from '../components/NetworkBadge';
 import Spinner from '../components/Spinner';
@@ -58,19 +57,58 @@ export default function PublicStorefront() {
 
   /* ── Live pricing for this store's slug ───────────────────────
      Store branding + the bundle universe still come from
-     getStore(slug) below. This hook is used ONLY to resolve the
-     actual price shown/charged for each bundle, straight from
-     GET /api/v1/pricing/store/:slug — so prices stay live even if
-     the reseller updates them after the store payload was cached. */
-  const { priceFor: slugPriceFor, status: priceStatus } = usePricingByStoreSlug(slug);
+     getStore(slug) below. Pricing itself is fetched DIRECTLY here
+     from GET /api/v1/pricing/store/:slug (api.pricing.getByStoreSlug
+     in api.ts) rather than through a hook, so we can see exactly
+     what the endpoint returns while we track down the mismatch. */
+  const [priceRows,   setPriceRows]   = useState(null);
+  const [priceStatus, setPriceStatus] = useState('loading');
+
+  useEffect(() => {
+    if (!slug) return;
+    let active = true;
+    setPriceStatus('loading');
+
+    api.pricing
+      .getByStoreSlug(slug)
+      .then((data) => {
+        if (!active) return;
+        // TEMP DEBUG — check the browser console/network tab to
+        // confirm field names (network / capacityGb / publicPriceGhc)
+        // match what's used below. Remove once confirmed.
+        console.log('[pricing/store/:slug] raw response for', slug, data);
+        setPriceRows(Array.isArray(data) ? data : data?.rows ?? []);
+        setPriceStatus('ready');
+      })
+      .catch((err) => {
+        if (!active) return;
+        console.error('[pricing/store/:slug] fetch failed for', slug, err);
+        setPriceRows(null);
+        setPriceStatus('error');
+      });
+
+    return () => { active = false; };
+  }, [slug]);
 
   // Resolves the price to display/use for a bundle: prefer the live
   // store-slug pricing row, fall back to whatever getStore(slug)
   // already gave us (e.g. while the pricing table is still loading).
+  // Matching is deliberately tolerant right now (case-insensitive
+  // network, a couple of likely price field names) until the exact
+  // response shape is confirmed via the console log above.
   const priceOf = (bundle) => {
-    if (!bundle) return null;
-    const live = priceStatus === 'ready' ? slugPriceFor(bundle.network, bundle.capacityGb) : null;
-    return live ?? bundle.sellingPriceGhc;
+    if (!bundle) return bundle?.sellingPriceGhc ?? null;
+    if (priceStatus !== 'ready' || !priceRows) return bundle.sellingPriceGhc;
+
+    const row = priceRows.find(
+      (r) =>
+        String(r.network).toUpperCase() === String(bundle.network).toUpperCase() &&
+        Number(r.capacityGb) === Number(bundle.capacityGb)
+    );
+    if (!row) return bundle.sellingPriceGhc;
+
+    const livePrice = row.publicPriceGhc ?? row.sellingPriceGhc ?? row.price ?? row.priceGhc;
+    return livePrice ?? bundle.sellingPriceGhc;
   };
 
   /* ── Selection + form ───────────────────────────────────────── */
