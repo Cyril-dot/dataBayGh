@@ -99,6 +99,33 @@ export default function AdminDashboard() {
         }
         .admin-breakdown__value { font-family: var(--font-mono); font-weight: 700; font-size: 0.92rem; }
 
+        /* NEW: profit card — visually distinct from the revenue (gold) card
+           using a green accent, since profit is the "good news" figure and
+           revenue alone can be misleading (it doesn't net out cost). */
+        .admin-profit-card {
+          border-color: rgba(34,197,94,0.3);
+          background: linear-gradient(160deg, var(--surface) 0%, var(--surface-raised) 100%);
+          position: relative; overflow: hidden;
+        }
+        .admin-profit-card::after {
+          content: '';
+          position: absolute; top: -60px; right: -60px;
+          width: 200px; height: 200px; border-radius: 50%;
+          background: radial-gradient(circle, rgba(34,197,94,0.18) 0%, transparent 70%);
+          pointer-events: none;
+        }
+        .admin-profit-card__icon {
+          width: 38px; height: 38px; border-radius: var(--radius-sm);
+          background: rgba(34,197,94,0.15); color: #22C55E;
+          display: flex; align-items: center; justify-content: center;
+          margin-bottom: 8px; border: 1px solid rgba(34,197,94,0.25);
+        }
+        .admin-profit-card__value {
+          font-family: var(--font-mono); font-weight: 700;
+          font-size: clamp(1.8rem, 4vw, 2.3rem); color: #22C55E; margin-top: 2px;
+        }
+        .admin-profit-card__value--negative { color: #EF4444; }
+
         .admin-attention-list { display: flex; flex-direction: column; margin-top: 14px; }
         .admin-attention-item {
           display: flex; align-items: center; gap: 12px; padding: 11px 4px;
@@ -174,7 +201,37 @@ export default function AdminDashboard() {
             </div>
           </div>
 
-          <div className="grid-stats fade-in-up delay-2">
+          {/* NEW: profit card. Shows cost-of-goods next to revenue and the
+              resulting gross profit (revenue - cost). This is GROSS profit —
+              it does not subtract affiliate commissions owed, which are
+              shown separately above as a liability since owed isn't the
+              same as paid out. */}
+          <div className="card admin-profit-card hover-lift fade-in-up delay-2">
+            <div className="admin-profit-card__icon">
+              <Icon name="trending_up" size={20} />
+            </div>
+            <span className="stat-card__label">Gross profit</span>
+            <span
+              className={`admin-profit-card__value ${
+                Number(data.totalProfitGhc ?? 0) < 0 ? 'admin-profit-card__value--negative' : ''
+              }`}
+            >
+              {fmtGhc(data.totalProfitGhc)}
+            </span>
+
+            <div className="admin-breakdown">
+              <div className="admin-breakdown__item">
+                <span className="admin-breakdown__label">Revenue</span>
+                <span className="admin-breakdown__value">{fmtGhc(data.totalRevenueGhc)}</span>
+              </div>
+              <div className="admin-breakdown__item">
+                <span className="admin-breakdown__label">Cost of goods</span>
+                <span className="admin-breakdown__value">{fmtGhc(data.totalCostGhc)}</span>
+              </div>
+            </div>
+          </div>
+
+          <div className="grid-stats fade-in-up delay-3">
             <div className="stat-card hover-lift">
               <div className="stat-card__icon">
                 <Icon name="group" size={20} />
@@ -199,7 +256,7 @@ export default function AdminDashboard() {
           </div>
         </div>
 
-        <div className="admin-aside fade-in-up delay-3">
+        <div className="admin-aside fade-in-up delay-4">
           <div className="card">
             <h2 style={{ marginBottom: 4 }}>Needs attention</h2>
             <p className="muted" style={{ fontSize: '0.85rem' }}>

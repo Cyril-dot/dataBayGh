@@ -47,11 +47,13 @@ export default function AdminOrders() {
                 <thead>
                   <tr>
                     <th>ID</th>
+                    <th>Account</th>
                     <th>Network</th>
                     <th>Size</th>
-                    <th>Number</th>
+                    <th>Sent to</th>
                     <th>Cost</th>
                     <th>Sold for</th>
+                    <th>Profit</th>
                     <th>Payment</th>
                     <th>Guest</th>
                     <th>Status</th>
@@ -59,24 +61,60 @@ export default function AdminOrders() {
                   </tr>
                 </thead>
                 <tbody>
-                  {orders.map((o) => (
-                    <tr key={o.id}>
-                      <td className="mono muted">#{o.id}</td>
-                      <td>
-                        <NetworkBadge network={o.network} />
-                      </td>
-                      <td>{o.capacityGb} GB</td>
-                      <td className="mono">{o.phoneNumber}</td>
-                      <td className="mono muted">{fmtGhc(o.costPriceGhc)}</td>
-                      <td className="mono">{fmtGhc(o.sellingPriceGhc)}</td>
-                      <td className="muted">{o.paymentMethod}</td>
-                      <td>{o.guest ? 'Yes' : 'No'}</td>
-                      <td>
-                        <StatusBadge status={o.status} />
-                      </td>
-                      <td className="muted">{new Date(o.createdAt).toLocaleDateString()}</td>
-                    </tr>
-                  ))}
+                  {orders.map((o) => {
+                    const profit = Number(o.profitGhc ?? 0);
+                    // Buyer ordered data for a different number than their
+                    // own account phone (e.g. topping up a friend/family
+                    // member). Highlight this distinction rather than hide it.
+                    const orderedForSelf =
+                      o.userPhone && o.phoneNumber && o.userPhone === o.phoneNumber;
+                    return (
+                      <tr key={o.id}>
+                        <td className="mono muted">#{o.id}</td>
+                        <td className="mono">
+                          {o.userEmail
+                            ? o.userEmail
+                            : <span className="muted">Guest</span>}
+                          {o.userPhone && (
+                            <div className="muted" style={{ fontSize: '0.72rem', marginTop: 2 }}>
+                              {o.userPhone}
+                            </div>
+                          )}
+                          {o.storefrontOrder && o.resellerStoreName && (
+                            <div className="muted" style={{ fontSize: '0.72rem', marginTop: 2 }}>
+                              via {o.resellerStoreName}
+                            </div>
+                          )}
+                        </td>
+                        <td>
+                          <NetworkBadge network={o.network} />
+                        </td>
+                        <td>{o.capacityGb} GB</td>
+                        <td className="mono">
+                          {o.phoneNumber}
+                          {o.userPhone && !orderedForSelf && (
+                            <div className="muted" style={{ fontSize: '0.7rem', marginTop: 2 }}>
+                              not own number
+                            </div>
+                          )}
+                        </td>
+                        <td className="mono muted">{fmtGhc(o.costPriceGhc)}</td>
+                        <td className="mono">{fmtGhc(o.sellingPriceGhc)}</td>
+                        <td
+                          className="mono"
+                          style={{ color: profit > 0 ? '#22C55E' : undefined }}
+                        >
+                          {fmtGhc(o.profitGhc)}
+                        </td>
+                        <td className="muted">{o.paymentMethod}</td>
+                        <td>{o.guest ? 'Yes' : 'No'}</td>
+                        <td>
+                          <StatusBadge status={o.status} />
+                        </td>
+                        <td className="muted">{new Date(o.createdAt).toLocaleDateString()}</td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
